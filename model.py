@@ -121,7 +121,7 @@ class CycleGAN:
                 self.G_XtoY.load_state_dict(torch.load((f'results/{self.dataset_path}/loss_{self.norm}/weights/G_X2Y.pt')))
             except Exception as E:
                 pass
-        self.G_XtoY = DataParallel(self.G_XtoY)
+        self.G_XtoY = DataParallel(self.G_XtoY, device_ids=[0, 1])
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.G_XtoY = self.G_XtoY.to(device)
 
@@ -131,7 +131,7 @@ class CycleGAN:
                 self.G_YtoX.load_state_dict(torch.load((f'results/{self.dataset_path}/loss_{self.norm}/weights/G_Y2X.pt')))
             except Exception as E:
                 pass
-        self.G_YtoX = DataParallel(self.G_YtoX)
+        self.G_YtoX = DataParallel(self.G_YtoX, device_ids=[0, 1])
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.G_YtoX = self.G_YtoX.to(device)
 
@@ -141,7 +141,7 @@ class CycleGAN:
                 self.D_X.load_state_dict(torch.load((f'results/{self.dataset_path}/loss_{self.norm}/weights/D_X.pt')))  
             except Exception as E:
                 pass
-        self.D_X = DataParallel(self.D_X)
+        self.D_X = DataParallel(self.D_X, device_ids=[0, 1])
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.D_X = self.D_X.to(device)
 
@@ -151,7 +151,7 @@ class CycleGAN:
                 self.D_Y.load_state_dict(torch.load((f'results/{self.dataset_path}/loss_{self.norm}/weights/D_Y.pt')))
             except Exception as E:
                 pass
-        self.D_Y = DataParallel(self.D_Y)
+        self.D_Y = DataParallel(self.D_Y, device_ids=[0, 1])
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.D_Y = self.D_Y.to(device)
 
@@ -316,7 +316,7 @@ class CycleGAN:
 
         return losses
     
-    def val(self):
+    def val(self, epoch=None):
         # Test Dataset
         x_dataset = Dataset("testA", self.dataset_path)
         y_dataset = Dataset("testB", self.dataset_path)
@@ -357,25 +357,27 @@ class CycleGAN:
             plt.axis('off')
 
             # Sauvegarder l'image
-            plt.savefig(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}.png')
+            if epoch is None:
+                filename = f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}.png'
+            else:
+                filename = f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}_epoch_{epoch}.png'
+            plt.savefig(filename)
             plt.close()
 
     def make_gif(self):
         # Train-Val-GIF
-        images = [[], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []]
-        
-        self.val()
-        for i in range(20):
-            images[i].append(imageio.read(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}.png'))
-            os.remove(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}.png')
+        self.val(epoch=0)
 
-        for epoch in range(EPOCHS):
+        for epoch in range(1, EPOCHS):
+            # Train-Val
             print("Epoch: {} en traitement pour la norme {}".format(epoch, self.norm))
             self.train(print_every=100, nb_epoch=1, verbose=False)
-            self.val()
-            for i in range(20):
-                images[i].append(imageio.imread(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}.png'))
-                os.remove(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}.png')
+            self.val(epoch=epoch)
+
+        # Create GIF
         for i in range(20):
-            imageio.mimsave(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}.gif', images[i])
+            with imageio.get_writer(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}.gif', mode='I', fps=2) as writer:
+                for epoch in range(EPOCHS):
+                    writer.append_data(imageio.imread(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}_epoch_{epoch}.png'))
+                    os.remove(f'results/{self.dataset_path}/loss_{self.norm}/exp/result_{i}_epoch_{epoch}.png')
         return
